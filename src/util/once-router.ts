@@ -3,10 +3,15 @@ import type { GroupConfiguration } from './types'
 
 type ChromeApi = Pick<
   typeof chrome,
-  'tabs' | 'tabGroups' | 'windows' | 'storage'
+  'tabs' | 'tabGroups' | 'windows' | 'storage' | 'runtime'
 >
 type PendingTab = { startedAt: number; initialGroupId: number }
 const PREFIX = 'group-once:pending:'
+const HANDLED_PREFIX = 'group-once:handled:'
+const SESSION_KEY = 'group-once:session'
+// Chrome emits onCreated for restored tabs, too, and has no restored flag.
+// Protect the startup burst until tab creation has been quiet for three seconds.
+const RESTORE_QUIET_MS = 3_000
 const SETTLE_MS = 750
 const MAX_WAIT_MS = 12_000
 
@@ -62,10 +67,17 @@ export function registerOnceRouter(
   loadConfigurations: () => Promise<() => GroupConfiguration[]>,
 ) {
   const pending = new Map<number, PendingTab>()
+  const handled = new Set<number>()
   const timers = new Map<number, ReturnType<typeof setTimeout>>()
   let getGroups: () => GroupConfiguration[] = () => []
   let ready: Promise<void>
   let queue = Promise.resolve()
+  let restoreUntil = 0
+  let startupSeen = false
+  let startupGeneration = 0
+  // Take the baseline before awaiting configuration. Tabs already open when
+  // this worker starts belong to the user; pending records are resumed below.
+  const baseline = api.tabs.query({})
 
   function enqueue(task: () => Promise<void>) {
     queue = queue
@@ -82,6 +94,15 @@ export function registerOnceRouter(
     timers.delete(tabId)
     pending.delete(tabId)
     await api.storage.session.remove(PREFIX + tabId)
+    handled.add(tabId)
+    await api.storage.session.set({ [HANDLED_PREFIX + tabId]: true })
+  }
+
+  async function protectStartup(startedAt: number) {
+    restoreUntil = Math.max(restoreUntil, startedAt + RESTORE_QUIET_MS)
+    await api.storage.session.set({
+      [SESSION_KEY]: { restoreUntil },
+    })
   }
 
   async function assign(
@@ -89,6 +110,7 @@ export function registerOnceRouter(
     rule: GroupConfiguration,
     expected: chrome.tabs.Tab,
   ) {
+    const generation = startupGeneration
     let tab = await api.tabs.get(tabId)
     if (tab.groupId !== expected.groupId || tab.windowId !== expected.windowId)
       return
@@ -117,6 +139,8 @@ export function registerOnceRouter(
     const latest = await api.tabs.get(tabId)
     if (
       latest.pinned ||
+      generation !== startupGeneration ||
+      Date.now() <= restoreUntil ||
       (latest.splitViewId !== undefined && latest.splitViewId !== -1) ||
       latest.groupId !== tab.groupId ||
       latest.windowId !== tab.windowId
@@ -154,6 +178,7 @@ export function registerOnceRouter(
     }
     await forget(tabId)
     if (
+      record.startedAt <= restoreUntil ||
       tab.pinned ||
       tab.groupId !== record.initialGroupId ||
       (tab.splitViewId !== undefined && tab.splitViewId !== -1)
@@ -202,6 +227,17 @@ export function registerOnceRouter(
     const tabId = tab.id
     const record = { startedAt: Date.now(), initialGroupId: tab.groupId }
     void enqueue(async () => {
+      if (handled.has(tabId)) return
+      if (record.startedAt <= restoreUntil) {
+        await protectStartup(record.startedAt)
+        await forget(tabId)
+        return
+      }
+      // Lazy session restoration can happen after the initial startup burst.
+      if (tab.discarded || tab.status === 'unloaded') {
+        await forget(tabId)
+        return
+      }
       pending.set(tabId, record)
       await api.storage.session.set({ [PREFIX + tabId]: record })
       await schedule(tabId)
@@ -239,20 +275,61 @@ export function registerOnceRouter(
     })
   }
   const onRemoved = (tabId: number) => {
-    void enqueue(() => forget(tabId))
+    void enqueue(async () => {
+      await forget(tabId)
+      handled.delete(tabId)
+      await api.storage.session.remove(HANDLED_PREFIX + tabId)
+    })
   }
   const onDetached = (tabId: number) => {
     void enqueue(() => forget(tabId))
+  }
+  const onStartup = () => {
+    // Set the barrier synchronously: tab events may precede or follow this
+    // event, and the configuration loader may still be running.
+    startupSeen = true
+    startupGeneration++
+    restoreUntil = Date.now() + RESTORE_QUIET_MS
+    void enqueue(async () => {
+      await protectStartup(Date.now())
+      for (const tabId of pending.keys()) await forget(tabId)
+    })
   }
   api.tabs.onCreated.addListener(onCreated)
   api.tabs.onUpdated.addListener(onUpdated)
   api.tabs.onRemoved.addListener(onRemoved)
   api.tabs.onDetached.addListener(onDetached)
+  api.runtime.onStartup.addListener(onStartup)
 
   ready = (async () => {
     getGroups = await loadConfigurations()
     const stored = await api.storage.session.get(null)
+    const session = stored[SESSION_KEY]
+    const savedRestoreUntil =
+      session &&
+      typeof session === 'object' &&
+      'restoreUntil' in session &&
+      typeof session.restoreUntil === 'number' &&
+      Number.isFinite(session.restoreUntil)
+        ? session.restoreUntil
+        : undefined
+    const hasSession = savedRestoreUntil !== undefined
+    if (hasSession && !startupSeen) {
+      restoreUntil = savedRestoreUntil
+    } else {
+      // Session storage is cleared on a full browser restart/extension reload,
+      // unlike an MV3 worker wake-up. Never reuse old numeric IDs across boots.
+      await protectStartup(Date.now())
+    }
+    const existing = await baseline
+    const liveIds = new Set(existing.map(tab => tab.id))
     for (const [key, value] of Object.entries(stored)) {
+      if (key.startsWith(HANDLED_PREFIX)) {
+        const tabId = Number(key.slice(HANDLED_PREFIX.length))
+        if (Number.isInteger(tabId) && liveIds.has(tabId)) handled.add(tabId)
+        else await api.storage.session.remove(key)
+        continue
+      }
       if (!key.startsWith(PREFIX)) continue
       const tabId = Number(key.slice(PREFIX.length))
       if (
@@ -265,9 +342,21 @@ export function registerOnceRouter(
         typeof value.initialGroupId !== 'number'
       )
         continue
+      if (!hasSession || startupSeen || !liveIds.has(tabId)) {
+        await api.storage.session.remove(key)
+        continue
+      }
       pending.set(tabId, value as PendingTab)
       await schedule(tabId)
     }
+    const retained: Record<string, boolean> = {}
+    for (const tab of existing) {
+      if (tab.id !== undefined && !pending.has(tab.id) && !handled.has(tab.id)) {
+        handled.add(tab.id)
+        retained[HANDLED_PREFIX + tab.id] = true
+      }
+    }
+    if (Object.keys(retained).length) await api.storage.session.set(retained)
   })()
 
   return {
@@ -279,6 +368,7 @@ export function registerOnceRouter(
       api.tabs.onUpdated.removeListener(onUpdated)
       api.tabs.onRemoved.removeListener(onRemoved)
       api.tabs.onDetached.removeListener(onDetached)
+      api.runtime.onStartup.removeListener(onStartup)
     },
     idle: () => queue,
   }
