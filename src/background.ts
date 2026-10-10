@@ -7,7 +7,7 @@ import { when } from '@/util/when'
 const groups = useGroupConfigurations()
 
 // Register listeners synchronously so a new tab can wake the MV3 worker.
-// Only pending new tabs are persisted; existing tabs are never reassigned.
+// Session-local IDs protect handled tabs; browser startup preserves native groups.
 registerOnceRouter(chrome, async () => {
   await when(groups.loaded)
   if (typeof (await readStorage('groups', 'sync')) === 'undefined') {

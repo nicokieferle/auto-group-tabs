@@ -10,6 +10,8 @@ Personal MIT-licensed fork of [loilo/auto-group-tabs](https://github.com/loilo/a
 - Die Zuordnung erfolgt nach dem ersten Laden, sobald URL/Titel kurz stabil sind; bei einer dauerhaft ladenden Seite spätestens nach 12 Sekunden. Lesezeichen, die in einem **neuen** Tab geöffnet werden, funktionieren damit genauso wie andere neue Tabs.
 - Danach bleibt die Zuordnung unverändert: spätere URL-/Titeländerungen, Aktualisieren, manuelles Verschieben oder Aufheben der Gruppierung lösen keine erneute Einsortierung aus. Ein leerer Tab, der schon in Default liegt und später zu ChatGPT navigiert, bleibt also in Default.
 - Bereits offene Tabs werden bei Installation, Neustart des Hintergrundprozesses oder Änderung der Regeln nicht nachträglich einsortiert. Eine neue, von Chrome geerbte Gruppe darf bei der Erstzuordnung geändert werden; eine weitere Gruppenänderung während des Ladens beendet die Automatik für diesen Tab. Die erste Gruppenzuweisung eines zuvor ungruppierten neuen Tabs kann Chrome erst nachträglich melden; diese wird als geerbte Gruppe behandelt.
+- **Chrome-Neustart:** Wiederhergestellte Tabs behalten ihre von Chrome wiederhergestellte Gruppe und ihr Fenster. Chrome meldet auch diese Tabs mit `tabs.onCreated`; deshalb bleibt die Automatik beim Profilstart pausiert, bis drei Sekunden lang kein weiterer Tab erstellt wurde. In dieser Phase selbst neu geöffnete Tabs bleiben ebenfalls unverändert. Bereits verworfene/nicht geladene Tabs werden auch bei späterer Wiederherstellung nicht erneut einsortiert. Ein später erstellter, bereits geladener Wiederherstellungstab ohne solche Merkmale ist von einem normalen neuen Tab nicht sicher unterscheidbar; die Schutzphase ist bewusst konservativ, keine dauerhafte Identitätsgarantie.
+- Erledigte Tabs werden während der laufenden Browsersitzung anhand ihrer ID als verarbeitet markiert. **Tab- und Gruppen-IDs gelten nur innerhalb einer Browsersitzung**; nach einem vollständigen Neustart werden alte IDs nicht verwendet. Maßgeblich ist dann die native Chrome-Gruppenzuordnung. Es werden keine Gruppen oder Tabs aus einer eigenen Kopie rekonstruiert und keine URLs zum Wiedererkennen gespeichert.
 - Angeheftete Tabs, Chrome-Split-View-Tabs und Popup-Fenster bleiben unverändert.
 
 ## Titel-Ausnahmen
@@ -26,7 +28,9 @@ Die Prüfung verwendet den **Tabtitel der ersten geladenen Seite**, nicht den Na
 4. **Entpackte Erweiterung laden** wählen und den Ordner `extension-chromium` auswählen (dort liegt `manifest.json`).
 5. Beim ersten Start sind GPT und Default vorkonfiguriert. Eine bereits vorhandene Gruppe mit entsprechendem Namen wird verwendet. Gruppenname, URL-Muster und Titel-Ausnahmen lassen sich in **Weitere Optionen** ändern.
 
-Berechtigungen bleiben `tabs`, `tabGroups`, `storage`. Es gibt keine neuen Berechtigungen, Content-Skripte, Host-Berechtigungen oder externen Netzwerkaufrufe im neuen Hintergrundcode. Regeln liegen wie beim Original in Chrome-Sync; der kurzlebige Status noch nicht einsortierter Tabs liegt in Chrome-Session-Storage, ohne URLs oder Titel.
+**Update:** Chrome geöffnet lassen, den Inhalt von `extension-chromium` im bisher geladenen Ordner durch den Inhalt des neuen ZIPs ersetzen und bei `chrome://extensions` auf **Neu laden** klicken. Den bisherigen Ordner und dieselbe Erweiterungsinstallation verwenden, damit die Regeln erhalten bleiben. Danach kurz warten, bis die Startschutzphase vorbei ist. Version 0.1.1 korrigiert künftige Neustarts; zuvor bereits falsch verschobene Tabs müssen einmal manuell in die gewünschte Gruppe zurückgelegt werden.
+
+Berechtigungen bleiben `tabs`, `tabGroups`, `storage`. Es gibt keine neuen Berechtigungen, Content-Skripte, Host-Berechtigungen oder externen Netzwerkaufrufe im neuen Hintergrundcode. Regeln liegen wie beim Original in Chrome-Sync; noch nicht einsortierte und bereits verarbeitete Tab-IDs sowie der Startschutz liegen in Chrome-Session-Storage, ohne URLs oder Titel.
 
 ## Build und Tests
 

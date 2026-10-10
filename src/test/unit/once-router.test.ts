@@ -21,7 +21,9 @@ function event() {
 function harness(
   initialGroups: chrome.tabGroups.TabGroup[] = [],
   stored: Record<string, unknown> = {},
+  coldStart = false,
 ) {
+  if (!coldStart) stored['group-once:session'] ??= { restoreUntil: 0 }
   const tabs = new Map<number, chrome.tabs.Tab>()
   const groups = [...initialGroups]
   const windows = new Map([
@@ -35,12 +37,15 @@ function harness(
     onUpdated = event(),
     onRemoved = event(),
     onDetached = event()
+  const onStartup = event()
   const api = {
+    runtime: { onStartup },
     tabs: {
       onCreated,
       onUpdated,
       onRemoved,
       onDetached,
+      query: vi.fn(async () => [...tabs.values()].map(tab => ({ ...tab }))),
       get: vi.fn(async (id: number) => {
         const tab = tabs.get(id)
         if (!tab) throw new Error('Closed tab')
@@ -137,6 +142,7 @@ function harness(
     tabs,
     groups,
     stored,
+    pendingKeys: () => Object.keys(stored).filter(key => key.startsWith('group-once:pending:')),
     put,
     create,
     update,
@@ -258,7 +264,8 @@ it('registers listeners before loading configuration and routes a bookmark tab t
   expect(current.tabs.get(1)?.groupId).toBe(7)
   expect(current.api.tabs.group).toHaveBeenCalledTimes(1)
   expect(current.groups).toHaveLength(1)
-  expect(current.stored).toEqual({})
+  expect(current.pendingKeys()).toEqual([])
+  expect(current.stored['group-once:handled:1']).toBe(true)
 })
 
 it('routes other and blank new tabs to one Default group even when opened simultaneously', async () => {
@@ -360,7 +367,8 @@ it('honors a manual move before the first decision and cleans closed pending tab
   await settle(router, 15_000)
   expect(current.tabs.get(1)?.groupId).toBe(44)
   expect(current.api.tabs.group).not.toHaveBeenCalled()
-  expect(current.stored).toEqual({})
+  expect(current.pendingKeys()).toEqual([])
+  expect(current.stored['group-once:handled:2']).toBeUndefined()
 })
 
 it('resumes pending first decisions across a worker restart, but never processed decisions', async () => {
@@ -369,7 +377,7 @@ it('resumes pending first decisions across a worker restart, but never processed
   await router.ready
   current.create(1, { url: 'https://chatgpt.com/', status: 'loading' })
   await router.idle()
-  expect(Object.keys(current.stored)).toHaveLength(1)
+  expect(current.pendingKeys()).toHaveLength(1)
   router.dispose()
   router = current.start()
   await router.ready
@@ -451,4 +459,143 @@ it('reuses GPT across windows while keeping Default local and incognito separate
   expect(
     current.groups.find(group => group.title === 'Default')?.windowId,
   ).toBe(1)
+})
+
+it('keeps restored tabs in their native groups after a full browser restart with new IDs', async () => {
+  current = harness([
+    { id: 207, windowId: 1, title: 'AC', color: 'blue', collapsed: false, shared: false },
+    { id: 208, windowId: 2, title: 'GPT', color: 'green', collapsed: true, shared: false },
+  ], {}, true)
+  current.put(101, { url: 'https://chatgpt.com/c/ac', groupId: 207 })
+  const router = current.start()
+  // Restore events can arrive before onStartup and before configuration loads.
+  current.create(102, { url: 'https://chatgpt.com/c/second', status: 'loading' })
+  current.api.runtime.onStartup.emit()
+  await router.ready
+  current.update(102, { groupId: 207, status: 'complete' })
+  current.create(103, { url: 'https://chatgpt.com/c/gpt', groupId: 208, windowId: 2 })
+  await settle(router, 4_000)
+  expect(current.tabs.get(101)).toMatchObject({ groupId: 207, windowId: 1 })
+  expect(current.tabs.get(102)).toMatchObject({ groupId: 207, windowId: 1 })
+  expect(current.tabs.get(103)).toMatchObject({ groupId: 208, windowId: 2 })
+  expect(current.api.tabs.group).not.toHaveBeenCalled()
+  expect(current.api.tabs.move).not.toHaveBeenCalled()
+  expect(current.groups).toHaveLength(2)
+  // Newly opened tabs are still routed once after startup settles.
+  current.create(104, { url: 'https://chatgpt.com/c/new' })
+  current.create(105, { url: 'https://example.com/new' })
+  await settle(router)
+  expect(current.tabs.get(104)).toMatchObject({ groupId: 208, windowId: 2 })
+  expect(current.groups.find(group => group.id === current!.tabs.get(105)?.groupId)?.title).toBe('Default')
+})
+
+it('extends startup protection for slow restore bursts and retains it across worker sleep', async () => {
+  current = harness([], {}, true)
+  let router = current.start()
+  await router.ready
+  await settle(router, 2_500)
+  current.create(11, { url: 'https://chatgpt.com/c/restored', groupId: 71 })
+  await router.idle()
+  router.dispose()
+  router = current.start()
+  await router.ready
+  await settle(router, 2_500)
+  current.create(12, { url: 'https://chatgpt.com/c/another', groupId: 72 })
+  await settle(router, 4_000)
+  expect(current.tabs.get(11)?.groupId).toBe(71)
+  expect(current.tabs.get(12)?.groupId).toBe(72)
+  expect(current.api.tabs.group).not.toHaveBeenCalled()
+  current.create(13, { url: 'https://chatgpt.com/c/new' })
+  await settle(router)
+  expect(current.api.tabs.group).toHaveBeenCalledTimes(1)
+})
+
+it('leaves discarded/unloaded lazy restore tabs alone after the startup quiet period', async () => {
+  current = harness([], {}, true)
+  const router = current.start()
+  await router.ready
+  await settle(router, 10_000)
+  current.create(21, { url: 'https://chatgpt.com/c/lazy', groupId: 71, discarded: true })
+  current.create(22, { url: 'https://chatgpt.com/c/unloaded', status: 'unloaded' })
+  await router.idle()
+  current.update(21, { discarded: false, status: 'complete' })
+  current.update(22, { groupId: 72, status: 'complete' })
+  await settle(router, 15_000)
+  expect(current.tabs.get(21)?.groupId).toBe(71)
+  expect(current.tabs.get(22)?.groupId).toBe(72)
+  expect(current.api.tabs.group).not.toHaveBeenCalled()
+})
+
+it('does not copy or reconstruct groups when another browser window is opened', async () => {
+  current = harness([
+    { id: 7, windowId: 1, title: 'GPT', color: 'green', collapsed: false, shared: false },
+  ])
+  current.put(1, { url: 'https://chatgpt.com/c/original', groupId: 7 })
+  const router = current.start()
+  await router.ready
+  current.create(2, { url: 'chrome://newtab/', windowId: 2 })
+  await settle(router)
+  expect(current.tabs).toHaveLength(2)
+  expect(current.groups.filter(group => group.title === 'GPT')).toHaveLength(1)
+  expect(current.tabs.get(1)).toMatchObject({ groupId: 7, windowId: 1 })
+  expect(current.groups.find(group => group.id === current!.tabs.get(2)?.groupId)).toMatchObject({ title: 'Default', windowId: 2 })
+})
+
+it('protects baseline tabs against repeated creation events after worker restarts', async () => {
+  current = harness()
+  let router = current.start()
+  await router.ready
+  current.create(31, { url: 'https://chatgpt.com/' })
+  await settle(router)
+  current.update(31, { groupId: 71 })
+  await router.idle()
+  router.dispose()
+  router = current.start()
+  await router.ready
+  current.api.tabs.onCreated.emit({ ...current.tabs.get(31)! })
+  await settle(router)
+  expect(current.tabs.get(31)?.groupId).toBe(71)
+  expect(current.api.tabs.group).toHaveBeenCalledTimes(1)
+})
+
+it('does not reuse stale pending IDs from the old extension on upgrade/cold startup', async () => {
+  current = harness([], {
+    'group-once:pending:41': { startedAt: Date.now() - 13_000, initialGroupId: -1 },
+  }, true)
+  current.put(41, { url: 'https://chatgpt.com/' })
+  const router = current.start()
+  await router.ready
+  await settle(router, 15_000)
+  expect(current.tabs.get(41)?.groupId).toBe(-1)
+  expect(current.pendingKeys()).toEqual([])
+  expect(current.api.tabs.group).not.toHaveBeenCalled()
+})
+
+it('cancels pending first decisions when a late onStartup event starts restoration', async () => {
+  current = harness()
+  const router = current.start()
+  await router.ready
+  current.create(51, { url: 'https://chatgpt.com/', status: 'loading' })
+  await router.idle()
+  current.api.runtime.onStartup.emit()
+  await router.idle()
+  current.update(51, { groupId: 71, status: 'complete' })
+  await settle(router, 15_000)
+  expect(current.tabs.get(51)?.groupId).toBe(71)
+  expect(current.api.tabs.group).not.toHaveBeenCalled()
+})
+
+it('stops assignment if startup begins while native group queries are still running', async () => {
+  current = harness()
+  const router = current.start()
+  await router.ready
+  current.api.tabGroups.query.mockImplementationOnce(async () => {
+    current!.api.runtime.onStartup.emit()
+    return []
+  })
+  current.create(61, { url: 'https://chatgpt.com/' })
+  await settle(router)
+  expect(current.tabs.get(61)?.groupId).toBe(-1)
+  expect(current.api.tabs.group).not.toHaveBeenCalled()
+  expect(current.api.tabs.move).not.toHaveBeenCalled()
 })
