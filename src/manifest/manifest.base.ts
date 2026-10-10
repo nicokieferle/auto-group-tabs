@@ -1,9 +1,9 @@
 export default {
   name: '__MSG_appName__',
-  version: '0.0.24',
+  version: '0.1.0',
   manifest_version: 3,
   description: '__MSG_appDesc__',
-  homepage_url: 'https://loilo.de',
+  homepage_url: 'https://github.com/nicokieferle/auto-group-tabs',
   icons: {
     '16': 'icons/icon16.png',
     '19': 'icons/icon19.png',

@@ -11,7 +11,7 @@ test.use({
     width: 400,
     height: 600,
   },
-  headless: false,
+  headless: !process.env.PW_HEADED,
 })
 
 test('Drag and drop groups', async ({ page }) => {

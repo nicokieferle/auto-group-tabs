@@ -13,7 +13,7 @@ test.use({
     width: 400,
     height: 600,
   },
-  headless: false,
+  headless: !process.env.PW_HEADED,
 })
 
 test.beforeEach(async ({ page }) => {
@@ -72,8 +72,12 @@ test('Edit and save groups', async ({ page }) => {
   // Show advanced options
   await dialogContainer.locator('.toggle-advanced-button').click()
 
-  // Toggle strict mode off
-  await dialogContainer.locator('#edit-dialog-strict').click()
+  // Add title exclusions (Enter adds a line instead of saving)
+  await dialogContainer.locator('#edit-dialog-excluded-titles').fill('xxx')
+  await dialogContainer.locator('#edit-dialog-excluded-titles').press('Enter')
+  await dialogContainer
+    .locator('#edit-dialog-excluded-titles')
+    .pressSequentially('Secret')
 
   // Toggle merge mode off
   await dialogContainer.locator('#edit-dialog-merge').click()
@@ -105,7 +109,11 @@ test('Edit and save groups', async ({ page }) => {
       title: 'Edited Group',
       color: 'red',
       matchers: [],
-      options: { strict: false, merge: false },
+      options: {
+        strict: false,
+        merge: false,
+        excludedTitles: ['xxx', 'Secret'],
+      },
     },
   ])
 })

@@ -7,7 +7,7 @@ test.use({
     width: 400,
     height: 600,
   },
-  headless: false,
+  headless: !process.env.PW_HEADED,
 })
 
 test('Test group creation flow', async ({ page }) => {
@@ -43,8 +43,10 @@ test('Test group creation flow', async ({ page }) => {
   // Show advanced options
   await dialogContainer.locator('.toggle-advanced-button').click()
 
-  // Enable strict mode
-  await dialogContainer.locator('#edit-dialog-strict').click()
+  // Set a title exclusion
+  await dialogContainer
+    .locator('#edit-dialog-excluded-titles')
+    .fill('xxx\nSecret')
 
   // Enable merge mode
   await dialogContainer.locator('#edit-dialog-merge').click()
@@ -81,7 +83,11 @@ test('Test group creation flow', async ({ page }) => {
       title: 'Test Group',
       color: 'blue',
       matchers: [],
-      options: { strict: true, merge: true },
+      options: {
+        strict: false,
+        merge: true,
+        excludedTitles: ['xxx', 'Secret'],
+      },
     },
   ])
 })

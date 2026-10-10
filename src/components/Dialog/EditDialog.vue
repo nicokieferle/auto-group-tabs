@@ -62,8 +62,8 @@ const showAdvanced = ref(false)
 const editTitle = ref(conflictManager.withoutMarker(props.title))
 const editTitleLazy = ref(editTitle.value)
 const editColor = ref(props.color)
-const editStrict = ref(props.options.strict)
 const editMerge = ref(props.options.merge)
+const editExcludedTitles = ref((props.options.excludedTitles ?? []).join('\n'))
 const editFieldBlurred = ref(false)
 
 const colorMenu = ref()
@@ -86,8 +86,8 @@ watch(
     editTitle.value = conflictManager.withoutMarker(props.title)
     editTitleLazy.value = editTitle.value
     editColor.value = props.color
-    editStrict.value = props.options.strict
     editMerge.value = props.options.merge
+    editExcludedTitles.value = (props.options.excludedTitles ?? []).join('\n')
     editFieldBlurred.value = false
 
     await nextTick()
@@ -137,8 +137,16 @@ function save(event: KeyboardEvent) {
 
   event.preventDefault()
   emit('save', editTitle.value, editColor.value, {
-    strict: editStrict.value,
+    strict: false,
     merge: editMerge.value,
+    excludedTitles: [
+      ...new Set(
+        editExcludedTitles.value
+          .split('\n')
+          .map(text => text.trim())
+          .filter(Boolean),
+      ),
+    ],
   })
   show.value = false
 }
@@ -203,16 +211,17 @@ function remove() {
 
     <SlideVertical :duration="0.3">
       <Card v-if="showAdvanced" seamless>
-        <CardSection ghost tight collapse seamless class="radio-container">
-          <v-checkbox id="edit-dialog-strict" v-model="editStrict" />
-          <ToggleLabel for="edit-dialog-strict">
-            <LabelText>
-              {{ msg.checkboxStrict }}
-              <template #secondary>
-                {{ msg.checkboxStrictDescription }}
-              </template>
-            </LabelText>
-          </ToggleLabel>
+        <CardSection ghost tight seamless>
+          <v-textarea
+            id="edit-dialog-excluded-titles"
+            v-model="editExcludedTitles"
+            :label="msg.excludedTitlesLabel"
+            :hint="msg.excludedTitlesHint"
+            persistent-hint
+            rows="3"
+            auto-grow
+            @keydown.enter.stop
+          />
         </CardSection>
 
         <CardSection ghost tight collapse seamless class="radio-container">

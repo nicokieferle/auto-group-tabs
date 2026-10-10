@@ -1,10 +1,10 @@
 {
   "appName": {
-    "message": "Automatische Tab-Gruppierung",
+    "message": "Auto-Group Tabs – Once (Nico)",
     "description": "The title of the application, displayed in the web store."
   },
   "appDesc": {
-    "message": "Weise Tabs automatisiert bestimmten Gruppen zu, basierend auf ihrer Adresse.",
+    "message": "Neue Tabs einmalig gruppieren: ChatGPT in GPT, alle anderen in Default.",
     "description": "The description of the application, displayed in the web store."
   },
   "previewTitle": {
@@ -334,5 +334,17 @@
   "popupAddCurrentGroup": {
     "message": "Konfiguration erstellen für",
     "description": "Add tab group configuration button from a popup"
+  },
+  "groupOnceHint": {
+    "message": "Regeln gelten nur beim ersten Öffnen neuer Tabs. Spätere Navigation und manuelles Verschieben ändern die Gruppe nicht. Default (*) muss unten stehen.",
+    "description": "First-open grouping option."
+  },
+  "excludedTitlesLabel": {
+    "message": "Titel ausschließen, die Folgendes enthalten",
+    "description": "First-open grouping option."
+  },
+  "excludedTitlesHint": {
+    "message": "Ein Text pro Zeile, Groß-/Kleinschreibung egal. Gilt für den Titel der ersten geladenen Seite. Ausnahmen nutzen die nächste passende Regel (normalerweise Default).",
+    "description": "First-open grouping option."
   }
 }

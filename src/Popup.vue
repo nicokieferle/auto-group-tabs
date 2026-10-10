@@ -159,6 +159,7 @@ onMounted(() => {
     <Suspense>
       <v-container>
         <div class="popup">
+          <p>{{ msg.groupOnceHint }}</p>
           <h1 class="h6">{{ msg.popupHeadline }}</h1>
           <PopupSuggestion ref="popupSuggestionRef" v-model="patterns" />
           <SlideVertical :duration="0.3">

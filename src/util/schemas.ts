@@ -5,6 +5,7 @@ import { colors } from './resources'
 export const SaveOptionsSchema = z.object({
   strict: z.boolean().default(false),
   merge: z.boolean().default(false),
+  excludedTitles: z.array(z.string()).optional(),
 })
 
 const matcherPatternRegex = new RegExp(inputPattern)

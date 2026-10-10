@@ -1,10 +1,10 @@
 {
   "appName": {
-    "message": "Auto-Group Tabs",
+    "message": "Auto-Group Tabs – Once (Nico)",
     "description": "The title of the application, displayed in the web store."
   },
   "appDesc": {
-    "message": "Automatically add tabs to your configured groups, based on their URL.",
+    "message": "Group newly opened tabs once: ChatGPT into GPT, all other tabs into Default.",
     "description": "The description of the application, displayed in the web store."
   },
   "previewTitle": {
@@ -338,5 +338,17 @@
   "popupAddCurrentGroup": {
     "message": "Create configuration for",
     "description": "Add tab group configuration button from a popup"
+  },
+  "groupOnceHint": {
+    "message": "Rules apply only when a new tab first opens. Later navigation and manual moves keep its group. Put the Default rule (*) last.",
+    "description": "First-open grouping option."
+  },
+  "excludedTitlesLabel": {
+    "message": "Exclude titles containing",
+    "description": "First-open grouping option."
+  },
+  "excludedTitlesHint": {
+    "message": "One text per line, case-insensitive. Evaluated on the first loaded page. Excluded tabs use the next matching rule (usually Default).",
+    "description": "First-open grouping option."
   }
 }

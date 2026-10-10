@@ -1,3 +1,41 @@
+# Auto-Group Tabs – Once (Nico)
+
+Personal MIT-licensed fork of [loilo/auto-group-tabs](https://github.com/loilo/auto-group-tabs), based on 0.0.24 (`c354e34`). This Chrome build groups **new tabs once** instead of continuously regrouping them. It is a separate unpacked extension, not an official store release.
+
+## Verhalten
+
+- Neue ChatGPT-Tabs (`https://chatgpt.com/*`, auch `https://chat.openai.com/*`) werden der vorhandenen nativen Chrome-Gruppe **GPT** zugeordnet. Die Farbe ist frei wählbar. Fehlt die Gruppe, wird sie erstellt.
+- Alle anderen neu geöffneten Tabs, auch leere neue Tabs, kommen in **Default**. Die Regel mit URL-Muster `*` steht deshalb zuletzt.
+- GPT nutzt standardmäßig auch eine bestehende Gruppe in einem anderen normalen Fenster. Default bleibt im jeweiligen Fenster. Private und normale Fenster werden nicht vermischt.
+- Die Zuordnung erfolgt nach dem ersten Laden, sobald URL/Titel kurz stabil sind; bei einer dauerhaft ladenden Seite spätestens nach 12 Sekunden. Lesezeichen, die in einem **neuen** Tab geöffnet werden, funktionieren damit genauso wie andere neue Tabs.
+- Danach bleibt die Zuordnung unverändert: spätere URL-/Titeländerungen, Aktualisieren, manuelles Verschieben oder Aufheben der Gruppierung lösen keine erneute Einsortierung aus. Ein leerer Tab, der schon in Default liegt und später zu ChatGPT navigiert, bleibt also in Default.
+- Bereits offene Tabs werden bei Installation, Neustart des Hintergrundprozesses oder Änderung der Regeln nicht nachträglich einsortiert. Eine neue, von Chrome geerbte Gruppe darf bei der Erstzuordnung geändert werden; eine weitere Gruppenänderung während des Ladens beendet die Automatik für diesen Tab. Die erste Gruppenzuweisung eines zuvor ungruppierten neuen Tabs kann Chrome erst nachträglich melden; diese wird als geerbte Gruppe behandelt.
+- Angeheftete Tabs, Chrome-Split-View-Tabs und Popup-Fenster bleiben unverändert.
+
+## Titel-Ausnahmen
+
+In den Optionen neben **GPT** auf den Stift klicken → **Erweiterte Einstellungen** → **Titel ausschließen, die Folgendes enthalten**. Ein Begriff pro Zeile, zum Beispiel `xxx` und `Secret`. Groß-/Kleinschreibung ist egal; es genügt, wenn der Tabtitel den Begriff enthält. Ein ausgeschlossener Tab nutzt die nächste passende Regel, normalerweise **Default**.
+
+Die Prüfung verwendet den **Tabtitel der ersten geladenen Seite**, nicht den Namen eines Lesezeichens. Ein erst später von der Website geänderter Titel wird bewusst nicht neu geprüft. Ausnahmen in der Default-Regel lassen die Gruppierung betroffener Tabs unverändert, wenn keine weitere Regel passt.
+
+## Installation in Chrome
+
+1. Das bereitgestellte ZIP entpacken und den Ordner dauerhaft behalten.
+2. Eine bereits installierte Original-Erweiterung **Auto-Group Tabs** deaktivieren, damit sie nicht parallel umsortiert.
+3. `chrome://extensions` öffnen und **Entwicklermodus** einschalten.
+4. **Entpackte Erweiterung laden** wählen und den Ordner `extension-chromium` auswählen (dort liegt `manifest.json`).
+5. Beim ersten Start sind GPT und Default vorkonfiguriert. Eine bereits vorhandene Gruppe mit entsprechendem Namen wird verwendet. Gruppenname, URL-Muster und Titel-Ausnahmen lassen sich in **Weitere Optionen** ändern.
+
+Berechtigungen bleiben `tabs`, `tabGroups`, `storage`. Es gibt keine neuen Berechtigungen, Content-Skripte, Host-Berechtigungen oder externen Netzwerkaufrufe im neuen Hintergrundcode. Regeln liegen wie beim Original in Chrome-Sync; der kurzlebige Status noch nicht einsortierter Tabs liegt in Chrome-Session-Storage, ohne URLs oder Titel.
+
+## Build und Tests
+
+Node.js 24 und `npm ci`. `npx playwright install chromium` installiert den Browser für die UI-Tests. `npm run build:chromium` führt Prüfungen und Build aus. Die UI-Tests laufen standardmäßig ohne sichtbares Fenster; mit `PW_HEADED=1 npm run test:browser` lassen sie sich sichtbar starten. Die Unit-Tests simulieren zusätzlich Tab-Ereignisse und Service-Worker-Neustarts.
+
+Die ursprüngliche MIT-Lizenz und die ursprüngliche Entwicklungsdokumentation folgen.
+
+---
+
 # Auto-Group Tabs
 
 This is a browser extension for Google Chrome and Firefox which enables the configuration of tab groups for certain URLs. Navigating to such a URL will automatically add the tab to its configured group (creating the group if it does not exist).

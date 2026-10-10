@@ -101,7 +101,7 @@ function deleteGroup(group: GroupConfiguration) {
 function addGroup(
   title: string,
   color: `${chrome.tabGroups.Color}`,
-  { strict, merge }: SaveOptions,
+  options: SaveOptions,
 ) {
   const id = crypto.randomUUID()
 
@@ -110,10 +110,7 @@ function addGroup(
     title: title,
     color: color,
     matchers: [],
-    options: {
-      strict,
-      merge,
-    },
+    options,
   })
 
   // oxlint-disable-next-line @typescript-eslint/no-floating-promises
@@ -174,6 +171,9 @@ onMounted(() => {
 <template>
   <Layout>
     <v-container>
+      <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+        {{ msg.groupOnceHint }}
+      </v-alert>
       <div class="settings">
         <div class="groups">
           <img
@@ -300,13 +300,13 @@ onMounted(() => {
 }
 
 :where(
-    button,
-    input:not(
-        :is([type='checkbox'], [type='radio'], [type='range'], [type='hidden'])
-      ),
-    select,
-    textarea
-  ) {
+  button,
+  input:not(
+    :is([type='checkbox'], [type='radio'], [type='range'], [type='hidden'])
+  ),
+  select,
+  textarea
+) {
   margin: 0;
   padding: 0;
   border: none;
